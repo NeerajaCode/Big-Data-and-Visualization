@@ -1,0 +1,65 @@
+from pyspark.ml.feature import OneHotEncoderEstimator, StringIndexer, VectorAssembler
+
+categories = [ 'model','condition', 'cylinders', 'fuel','transmission', 'type','paint_color']
+
+categs = []
+
+for categoric in categories:
+    stringIndexer = StringIndexer(inputCol = categoric, outputCol = categoric + 'Index')
+    encoder = OneHotEncoderEstimator(inputCols=[stringIndexer.getOutputCol()], outputCols=[categoric + "classVec"])
+    categs += [stringIndexer, encoder]
+
+string_label = StringIndexer(inputCol = 'price', outputCol = 'label')
+
+categs += [string_label]
+
+numerics = ['year', 'odometer']
+
+input_assemble = [c + "classVec" for c in categories] + numerics
+
+assembling = VectorAssembler(inputCols=input_assemble, outputCol="features")
+
+categs += [assembling]
+
+cols = sp_df.columns
+
+import os
+
+os.mkdir("RddCheckPoint_New")
+
+spark = SparkSession.builder.appName("PyTest").master("local[*]").getOrCreate()
+
+spark.sparkContext.setCheckpointDir("RddCheckPoint")
+
+df = sp_df
+
+df.checkpoint()
+
+from pyspark.ml import Pipeline
+
+pipeline = Pipeline(stages = categs)
+
+pipelineModels = pipeline.fit(sp_df)
+
+df = pipelineModels.transform(sp_df)
+
+selectedCols = ['label', 'features'] + cols
+df = df.select(selectedCols)
+df.printSchema()
+
+training_data, testing_data = df.randomSplit([0.8, 0.2], seed = 2018)
+sc.setCheckpointDir('checkpoint')
+print("training_data count: " + str(training_data.count()))
+print("testing_data count: " + str(testing_data.count()))
+training_data.checkpoint()
+training_data.explain(extended=True)
+
+
+from pyspark.ml.classification import RandomForestClassifier
+rfc = RandomForestClassifier(featuresCol = 'features', labelCol = 'label')
+rfcModel = rfc.fit(training_data)
+predictions = rfcModel.transform(testing_data)
+
+from pyspark.ml.evaluation import BinaryClassificationEvaluator
+evaluating = BinaryClassificationEvaluator()
+print("testing_data Area Under ROC " + str(evaluating.evaluate(predictions, {evaluating.metricName: "areaUnderROC"})))

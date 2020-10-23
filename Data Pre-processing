@@ -1,0 +1,67 @@
+import pyspark
+from pyspark.sql import SparkSession, SQLContext
+import pandas
+
+spark = SparkSession.Builder().master("local[1]").appName("SparkLoad").getOrCreate()
+
+spark_df = spark.read.options(header='True', 
+
+inferSchema='True',delimiter=',').csv('/home/neer1/Desktop/Course_work/vehicles.csv')
+sqlContext = SQLContext.getOrCreate(sc)
+
+spark_data = spark_df.select('id','region','price','year','manufacturer', 'model', 'condition', 'cylinders', 'fuel', 'odometer', 'title_status', 'transmission', 'vin', 'drive', 'size', 'type', 'paint_color', 'state', 'lat','long')
+
+spark_data.count()
+
+from pyspark.sql.functions import split,col          
+                                        
+spark_data = spark_data.dropDuplicates(['id'])
+spark_data.count()
+
+spark_data = spark_data.na.drop(subset=["manufacturer", "year"])
+
+spark_data = spark_data.na.drop(subset=["model"])
+
+spark_data = spark_data.na.drop(subset=["lat", "long"])
+
+spark_data=spark_data.filter("fuel in ('petrol','diesel','gas','electric')")
+
+spark_data = spark_data.withColumn("col1",split(col("region"),"/").getItem(0))
+
+spark_data = spark_data.na.drop(subset=["transmission"])
+
+spark_data = spark_data.na.drop(subset=["type"])
+
+spark_data = spark_data.na.drop(subset=["state"])
+
+from pyspark.sql.functions import length,upper
+from pyspark.sql import functions as F
+
+spark_data = spark_data.filter(length(col("state"))<3)
+
+spark_data = spark_data.withColumn("state", upper(col("state")))
+
+spark_data = spark_data.na.fill({"paint_color":"no color"})
+
+from pyspark.sql.functions import when
+
+spark_data = spark_data.withColumn("year", spark_data["year"].cast(IntegerType()))
+spark_data.withColumn("condition",when((col("condition").isNull() ==True) & (col("year") >= 2019), "new"))
+
+pd_df = spark_data.toPandas()
+pd_df.to_csv('/home/neer1/Desktop/Course_work/test.csv',encoding='utf-8')
+
+
+sp_df = spark_data
+
+sp_df = sp_df.na.drop()
+
+from pyspark.sql.types import IntegerType,DoubleType
+
+sp_df = sp_df.withColumn("year", sp_df["year"].cast(IntegerType()))
+
+sp_df = sp_df.withColumn("odometer", sp_df["odometer"].cast(IntegerType()))
+
+sp_df = sp_df.withColumn("lat", sp_df["lat"].cast(DoubleType()))
+
+sp_df = sp_df.withColumn("long", sp_df["long"].cast(DoubleType()))
